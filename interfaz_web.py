@@ -18,11 +18,11 @@ from io import BytesIO
 import tempfile
 import os
 import shutil
-from dotenv import load_dotenv
-load_dotenv()
+# from dotenv import load_dotenv
+# load_dotenv()
 
 # Configura tu API Key de Foursquare
-API_KEY = os.getenv("FOURSQUARE_API_KEY")
+API_KEY = st.secrets["FOURSQUARE_API_KEY"]
 
 st.title("Descargar Datos de Foursquare")
 
