@@ -9,3 +9,5 @@ streamlit-folium>=0.18.0
 shapely>=2.0.4
 geopandas>=0.14.4
 python-dotenv>=1.0.1
+dask>=2024.8.0
+huggingface-hub>=0.24.0
