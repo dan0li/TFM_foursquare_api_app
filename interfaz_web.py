@@ -20,15 +20,6 @@ import ast
 import re
 import dask.dataframe as dd
 from huggingface_hub import login
-# from urllib3.util.retry import Retry #
-# from requests.adapters import HTTPAdapter #
-# import shutil # 
-# from shapely.geometry import box #
-# from io import BytesIO #
-
-# from dotenv import load_dotenv
-# Cargar variables desde .env
-# load_dotenv()
 
 # Configura tu API Key de Foursquare y HuggingFace
 API_KEY = st.secrets["FOURSQUARE_API_KEY"]
@@ -907,3 +898,4 @@ if data:
                 data=zip_bytes,
                 file_name="foursquare_data_shapefile.zip",
                 mime="application/zip")
+
