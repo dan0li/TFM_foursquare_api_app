@@ -34,10 +34,11 @@ hf_token = st.secrets["HF_TOKEN"]
 len_df = st.session_state.get('len_HF_dataset', None)
 if len_df is None:
     # Descargar el dataset en HuggingFace si no está en la sesión
-    if "hf_logged_in" not in st.session_state:
-        login(token=hf_token)
-        st.session_state["hf_logged_in"] = True
-    df = dd.read_parquet("hf://datasets/foursquare/fsq-os-places/release/dt=2025-08-07/places/parquet/*.parquet")
+    # if "hf_logged_in" not in st.session_state:
+    #     login(token=hf_token)
+    #     st.session_state["hf_logged_in"] = True
+    df = dd.read_parquet("hf://datasets/foursquare/fsq-os-places/release/dt=2025-08-07/places/parquet/*.parquet",
+                         storage_options={"token": hf_token})
     st.session_state['len_HF_dataset'] = df.shape[0].compute()
 
 # Cargar el dataset de categorias de Foursquare
@@ -909,6 +910,7 @@ if data:
                 data=zip_bytes,
                 file_name="foursquare_data_shapefile.zip",
                 mime="application/zip")
+
 
 
 
