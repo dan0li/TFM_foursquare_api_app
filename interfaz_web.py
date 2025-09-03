@@ -3,6 +3,7 @@ import requests
 import numpy as np
 import json
 from geopy.geocoders import Nominatim
+from geopy.geocoders import OpenCage
 import folium
 from streamlit_folium import st_folium
 from shapely.geometry import Point, Polygon
@@ -20,9 +21,10 @@ import ast
 import re
 import dask.dataframe as dd
 
-# Configura tu API Key de Foursquare y HuggingFace
+# Configuramos las API KEYS necesarias
 API_KEY = st.secrets["FOURSQUARE_API_KEY"]
 hf_token = st.secrets["HF_TOKEN"]
+OPENCAGE_KEY = st.secrets["OPENCAGE_KEY"]
     
 # Cargar el dataset de Foursquare
 len_df = st.session_state.get('len_HF_dataset', None)
@@ -58,10 +60,9 @@ if categories:
 limit = st.number_input("Número de resultados a mostrar:", min_value=1, value=10)
 parametros['limit'] = limit
 
-# Obtener coordenadas de la ciudad
 @st.cache_data(show_spinner=False)
 def geocode_location(place: str):
-    geolocator = Nominatim(user_agent="foursquare_app_streamlit", timeout=10)
+    geolocator = OpenCage(api_key=OPENCAGE_KEY, timeout=10)
     return geolocator.geocode(place)
 
 lat = lon = None
@@ -900,6 +901,7 @@ if data:
                 data=zip_bytes,
                 file_name="foursquare_data_shapefile.zip",
                 mime="application/zip")
+
 
 
 
