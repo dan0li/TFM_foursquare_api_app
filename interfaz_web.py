@@ -25,11 +25,18 @@ from huggingface_hub import login
 API_KEY = st.secrets["FOURSQUARE_API_KEY"]
 hf_token = st.secrets["HF_TOKEN"]
 
+# Iniciar logearse con el token de HuggingFace
+if "hf_logged_in" not in st.session_state:
+    login(token=hf_token)
+    st.session_state["hf_logged_in"] = True
+    
 # Cargar el dataset de Foursquare
 len_df = st.session_state.get('len_HF_dataset', None)
 if len_df is None:
     # Descargar el dataset en HuggingFace si no está en la sesión
-    login(token=hf_token)
+    if "hf_logged_in" not in st.session_state:
+        login(token=hf_token)
+        st.session_state["hf_logged_in"] = True
     df = dd.read_parquet("hf://datasets/foursquare/fsq-os-places/release/dt=2025-08-07/places/parquet/*.parquet")
     st.session_state['len_HF_dataset'] = df.shape[0].compute()
 
@@ -37,7 +44,9 @@ if len_df is None:
 categories_fsq = st.session_state.get('categories_FSQ', None)
 if categories_fsq is None:
     # Descargar el dataset en HuggingFace si no está en la sesión
-    login(token=hf_token)
+    if "hf_logged_in" not in st.session_state:
+        login(token=hf_token)
+        st.session_state["hf_logged_in"] = True
     categories_fsq = dd.read_parquet("hf://datasets/foursquare/fsq-os-places/release/dt=2025-08-07/categories/parquet/categories.zstd.parquet")
     st.session_state['categories_FSQ'] = categories_fsq.compute()
 
@@ -562,7 +571,9 @@ with col_centrado:
                 len_df = st.session_state.get('len_HF_dataset', None)
                 st.write(f"Vamos a intentar completar los POIs obtenidos llamando a la API con los {len_df} POIs del dataset de Foursquare")
                 # Filstrar los POIs del dataset
-                login(token=hf_token)
+                if "hf_logged_in" not in st.session_state:
+                    login(token=hf_token)
+                    st.session_state["hf_logged_in"] = True
                 dataset_path = "hf://datasets/foursquare/fsq-os-places/release/dt=2025-08-07/places/parquet/*.parquet"
 
                 df_dataset = filtrar_pois_fast(dataset_path, location=(center_lat, center_lon, radius_km), query=query)
@@ -898,4 +909,5 @@ if data:
                 data=zip_bytes,
                 file_name="foursquare_data_shapefile.zip",
                 mime="application/zip")
+
 
