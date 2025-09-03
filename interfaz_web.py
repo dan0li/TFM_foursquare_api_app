@@ -26,9 +26,9 @@ API_KEY = st.secrets["FOURSQUARE_API_KEY"]
 hf_token = st.secrets["HF_TOKEN"]
 
 # Iniciar logearse con el token de HuggingFace
-if "hf_logged_in" not in st.session_state:
-    login(token=hf_token)
-    st.session_state["hf_logged_in"] = True
+# if "hf_logged_in" not in st.session_state:
+#     login(token=hf_token)
+#     st.session_state["hf_logged_in"] = True
     
 # Cargar el dataset de Foursquare
 len_df = st.session_state.get('len_HF_dataset', None)
@@ -909,5 +909,6 @@ if data:
                 data=zip_bytes,
                 file_name="foursquare_data_shapefile.zip",
                 mime="application/zip")
+
 
 
