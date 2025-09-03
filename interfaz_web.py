@@ -2,7 +2,6 @@ import streamlit as st
 import requests
 import numpy as np
 import json
-from geopy.geocoders import Nominatim
 from geopy.geocoders import OpenCage
 import folium
 from streamlit_folium import st_folium
@@ -901,6 +900,7 @@ if data:
                 data=zip_bytes,
                 file_name="foursquare_data_shapefile.zip",
                 mime="application/zip")
+
 
 
 
