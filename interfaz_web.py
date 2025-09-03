@@ -19,7 +19,6 @@ import math
 import ast
 import re
 import dask.dataframe as dd
-from huggingface_hub import login
 
 # Configura tu API Key de Foursquare y HuggingFace
 API_KEY = st.secrets["FOURSQUARE_API_KEY"]
@@ -60,12 +59,16 @@ limit = st.number_input("Número de resultados a mostrar:", min_value=1, value=1
 parametros['limit'] = limit
 
 # Obtener coordenadas de la ciudad
+@st.cache_data(show_spinner=False)
+def geocode_location(place: str):
+    geolocator = Nominatim(user_agent="foursquare_app_streamlit", timeout=10)
+    return geolocator.geocode(place)
+
 lat = lon = None
 if location:
-    geolocator = Nominatim(user_agent="foursquare_app", timeout=10)
-    location = geolocator.geocode(location, timeout=10)
-    if location:
-        lat, lon = location.latitude, location.longitude
+    loc = geocode_location(location)
+    if loc:
+        lat, lon = loc.latitude, loc.longitude
     else:
         st.error("No se pudo encontrar la ciudad.")
 
@@ -897,6 +900,7 @@ if data:
                 data=zip_bytes,
                 file_name="foursquare_data_shapefile.zip",
                 mime="application/zip")
+
 
 
 
