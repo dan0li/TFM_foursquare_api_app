@@ -21,10 +21,10 @@ import re
 import dask.dataframe as dd
 
 # Configuramos las API KEYS necesarias
-API_KEY = st.secrets["FOURSQUARE_API_KEY"]
+API_KEY = st.secrets["NUEVA_API_KEY_FOURSQUARE"]
 hf_token = st.secrets["HF_TOKEN"]
 OPENCAGE_KEY = st.secrets["OPENCAGE_KEY"]
-    
+
 # Cargar el dataset de Foursquare
 len_df = st.session_state.get('len_HF_dataset', None)
 if len_df is None:
@@ -71,6 +71,7 @@ if location:
         lat, lon = loc.latitude, loc.longitude
     else:
         st.error("No se pudo encontrar la ciudad.")
+
 
 # Mostrar el mapa si hay coordenadas
 if lat and lon:
@@ -144,8 +145,8 @@ if lat and lon:
                     parametros['ll'] = f"{str(centro_lat)},{str(centro_lon)}"
                     del(parametros['near'])
 
-def get_poi_photo(fsq_id):
-    url = f"https://api.foursquare.com/v3/places/{fsq_id}/photos"
+def get_poi_photo(fsq_place_id):
+    url = f"https://api.foursquare.com/v3/places/{fsq_place_id}/photos"
     headers = {
         "Authorization": API_KEY,
         "Accept": "application/json"
@@ -159,8 +160,8 @@ def get_poi_photo(fsq_id):
             return f"{p['prefix']}original{p['suffix']}"
     return None  # Si no hay fotos o error
 
-def get_poi_tips(fsq_id):
-    url = f"https://api.foursquare.com/v3/places/{fsq_id}/tips"
+def get_poi_tips(fsq_place_id):
+    url = f"https://api.foursquare.com/v3/places/{fsq_place_id}/tips"
     headers = {
         "Authorization": API_KEY,
         "Accept": "application/json"
@@ -187,7 +188,12 @@ def generar_malla_centros(centro, radio_m, step_m):
     return centros
 
 def buscar_pois_malla(api_key, centro, radio_m, step_m=250, query=None):
-    headers = {"Authorization": api_key}
+    url = "https://places-api.foursquare.com/places/search"
+    headers = {
+        "accept": "application/json",
+        "X-Places-Api-Version": "2025-06-17",
+        "Authorization": "Bearer " + API_KEY
+    }
     centros = generar_malla_centros(centro, radio_m, step_m)
     
     all_pois = {}
@@ -202,10 +208,10 @@ def buscar_pois_malla(api_key, centro, radio_m, step_m=250, query=None):
         }
         if query:
             params["query"] = query
-        response = requests.get("https://api.foursquare.com/v3/places/search", headers=headers, params=params)
+        response = requests.get(url, headers=headers, params=params)
         if response.status_code == 200:
             for poi in response.json().get("results", []):
-                all_pois[poi["fsq_id"]] = poi
+                all_pois[poi["fsq_place_id"]] = poi
                 if len(all_pois) >= limit:
                     break  # Salir del for interno si alcanzamos el límite
 
@@ -223,7 +229,7 @@ def flatten_poi(poi):
         lon = main_geo.get("longitude")
 
         return {
-            "fsq_id": poi.get("fsq_id"),
+            "fsq_place_id": poi.get("fsq_place_id"),
             "name": poi.get("name"),
             "categories": json.dumps(poi.get("categories", []), ensure_ascii=False),
             "closed_bucket": poi.get("closed_bucket"),
@@ -236,171 +242,6 @@ def flatten_poi(poi):
             "location": json.dumps(poi.get("location", {}), ensure_ascii=False),
             "related_places": json.dumps(poi.get("related_places", {}), ensure_ascii=False),
         }
-
-def _normalize_labels(raw):
-    """
-    Normaliza fsq_category_labels en una lista de strings.
-    Acepta: list, str con ['a','b'], str sin comillas "[A > B]", None.
-    """
-    if raw is None:
-        return []
-    if isinstance(raw, list):
-        return [str(x) for x in raw if x is not None]
-    if isinstance(raw, str):
-        s = raw.strip()
-        # intento parsear literal si tiene comillas
-        try:
-            parsed = ast.literal_eval(s)
-            if isinstance(parsed, list):
-                return [str(x) for x in parsed]
-        except Exception:
-            pass
-        # si empieza y termina con [] quitarlas y separar por comas (fallback)
-        if s.startswith('[') and s.endswith(']'):
-            inner = s[1:-1].strip()
-            if inner == "":
-                return []
-            # si hay comas, dividir, si no, tomar entero
-            if ',' in inner:
-                parts = [p.strip().strip('\'"') for p in inner.split(',') if p.strip()]
-                return parts
-            else:
-                return [inner]
-        # caso general: devolver el string tal cual
-        return [s]
-    # fallback para otros tipos
-    return [str(raw)]
-
-def _haversine_mask_partition(part, lat0, lon0, radius_km):
-    """
-    Devuelve una Series booleana indicando si fila está dentro del radio.
-    Se asume part es un pandas.DataFrame (map_partitions).
-    """
-    mask = pd.Series(False, index=part.index)
-    if ("latitude" not in part.columns) or ("longitude" not in part.columns):
-        return mask
-
-    lat = pd.to_numeric(part["latitude"], errors="coerce")
-    lon = pd.to_numeric(part["longitude"], errors="coerce")
-    valid = lat.notnull() & lon.notnull()
-    if not valid.any():
-        return mask
-
-    lat_vals = np.radians(lat[valid].values.astype(float))
-    lon_vals = np.radians(lon[valid].values.astype(float))
-    lat0r = math.radians(lat0)
-    lon0r = math.radians(lon0)
-
-    dlat = lat_vals - lat0r
-    dlon = lon_vals - lon0r
-    a = np.sin(dlat / 2) ** 2 + np.cos(lat0r) * np.cos(lat_vals) * np.sin(dlon / 2) ** 2
-    dist = 2 * R_EARTH_KM * np.arcsin(np.sqrt(a))
-
-    mask.loc[valid.index] = dist <= radius_km
-    return mask
-
-def _query_mask_partition(part, tokens, search_cols):
-    """
-    Construye una máscara booleana por partición buscando tokens en search_cols.
-    tokens: lista de strings (ya en minúsculas).
-    """
-    mask = pd.Series(False, index=part.index)
-    if part.shape[0] == 0:
-        return mask
-
-    for col in search_cols:
-        if col not in part.columns:
-            continue
-        col_ser = part[col].fillna("")
-
-        # caso especial: categories que pueden ser listas o strings con []
-        if col == "fsq_category_labels":
-            # aplica normalize_labels por elemento (vectorizado con apply)
-            def cat_match(x):
-                labs = _normalize_labels(x)
-                if not labs:
-                    return False
-                for lab in labs:
-                    lab_l = str(lab).lower()
-                    for t in tokens:
-                        # match por substring o match con la parte más específica después de ">"
-                        if t in lab_l:
-                            return True
-                        if ">" in lab_l:
-                            most_specific = lab_l.split(">")[-1].strip()
-                            if t == most_specific:
-                                return True
-                return False
-
-            mask = mask | col_ser.apply(cat_match)
-        else:
-            # otros campos: transformamos a string y buscamos tokens (regex OR)
-            ser_str = col_ser.astype(str).str.lower()
-            # escape tokens para regex, y buscar cualquiera
-            pattern = "|".join(re.escape(t) for t in tokens)
-            # na=False para evitar nulos
-            mask = mask | ser_str.str.contains(pattern, na=False)
-
-    return mask
-
-def filtrar_pois(df, location=None, query=None, search_cols=None):
-    """
-    Filtra un Dask DataFrame de POIs.
-
-    - location: (lat_center, lon_center, radius_km). Si None, no filtra por ubicación.
-    - query: string con tokens separados por coma (ej: "cafe, restaurant, +34")
-    - search_cols: lista de columnas en las que buscar query. Si None, usamos columnas por defecto.
-
-    Retorna:
-      - Dask DataFrame (lazy) si limit is None
-      - pandas.DataFrame si limit es int (ya computado)
-    """
-    # columnas por defecto para búsqueda libre
-    if search_cols is None:
-        search_cols = [
-            "fsq_category_labels", "name", "address", "locality", "region",
-            "postcode", "tel", "website", "email"
-        ]
-
-    filtrado = df
-
-    # 1) Filtrado por bounding box aproximado (rápido)
-    if location:
-        lat0, lon0, radius_km = location
-        # aproximación para delta lat/lon
-        delta_lat = radius_km / 110.574
-        # evitar cos(90°) cuando lat0 ~ +/-90
-        cos_lat = math.cos(math.radians(lat0))
-        cos_lat = max(cos_lat, 1e-6)
-        delta_lon = radius_km / (111.320 * cos_lat)
-
-        lat_min, lat_max = lat0 - delta_lat, lat0 + delta_lat
-        lon_min, lon_max = lon0 - delta_lon, lon0 + delta_lon
-
-        filtrado = filtrado[
-            (filtrado["latitude"] >= lat_min) &
-            (filtrado["latitude"] <= lat_max) &
-            (filtrado["longitude"] >= lon_min) &
-            (filtrado["longitude"] <= lon_max)
-        ]
-
-        # 1b) refinar por haversine (vectorizado por partición)
-        # usamos map_partitions para aplicar la máscara por partición de forma eficiente
-        def _keep_in_circle(part):
-            m = _haversine_mask_partition(part, lat0, lon0, radius_km)
-            return part[m]
-        filtrado = filtrado.map_partitions(_keep_in_circle, meta=filtrado._meta)
-
-    # 2) Filtrado por query (tokens)
-    if query:
-        tokens = [t.strip().lower() for t in query.split(",") if t.strip()]
-        if tokens:
-            def _filter_part_by_query(part):
-                m = _query_mask_partition(part, tokens, search_cols)
-                return part[m]
-            filtrado = filtrado.map_partitions(_filter_part_by_query, meta=filtrado._meta)
-
-    return filtrado.compute()
 
 def filtrar_pois_fast(dataset_path, location=None, query=None, search_cols=None):
     if search_cols is None:
@@ -457,13 +298,40 @@ def parse_dict(x):
     except (ValueError, SyntaxError):
         return {}
 
+campos_finales = ['fsq_place_id', 
+                  'name',
+                  'category_id',
+                  'category_name',
+                  'category_short_name',
+                  'category_plural_name',
+                  'category_icon_prefix',
+                  'category_icon_suffix',
+                  'latitude',
+                  'longitude',
+                  'address',
+                  'locality',
+                  'postcode',
+                  'country',
+                  'region',
+                  'date_created',
+                  'date_refreshed',
+                  'date_closed',
+                  'tel',
+                  'website',
+                  'email',
+                  'facebook_id',
+                  'instagram',
+                  'twitter'
+                  ]
 col_izquierda, col_centrado, col_derecha = st.columns([1, 1, 1])
 with col_centrado:
     if location:
         if st.button("📡 Llamar a la API"):
-            url = "https://api.foursquare.com/v3/places/search"
+            # url = "https://api.foursquare.com/v3/places/search"
+            url = "https://places-api.foursquare.com/places/search"
             headers = {"accept": "application/json", 
-                       "Authorization": API_KEY
+                        "X-Places-Api-Version": "2025-06-17",
+                       "Authorization": "Bearer " + API_KEY
                        }
             params = parametros
             center_lat = float(parametros['ll'].split(",")[0])
@@ -482,38 +350,11 @@ with col_centrado:
                 else:
                     response_json = response.json()
                     st.error(f"Error en la llamada a la API: {response_json['message']}")
-                    st.error(f"{response}")
+                    data = pd.DataFrame(columns=campos_finales)
 
             # Mostrar número de POIs encontrados
             st.success(f"🔎 Se han encontrado {len(data)} lugares mediante la llamada a la API.")
 
-            campos_finales = ['fsq_id', 
-                              'name',
-                              'category_id',
-                              'category_name',
-                              'category_short_name',
-                              'category_plural_name',
-                              'category_icon_prefix',
-                              'category_icon_suffix',
-                              'latitude',
-                              'longitude',
-                              'address',
-                              'locality',
-                              'postcode',
-                              'admin_region',
-                              'country',
-                              'region',
-                              'date_created',
-                              'date_refreshed',
-                              'date_closed',
-                              'tel',
-                              'website',
-                              'email',
-                              'facebook_id',
-                              'instagram',
-                              'twitter',
-                              'closed_bucket'
-                              ]
             if data is not None and len(data) > 0:
                 # API -> DataFrame
                 df_api = pd.DataFrame([flatten_poi(poi) for poi in data])
@@ -521,9 +362,18 @@ with col_centrado:
                 # Aplicamos el parse a las columnas
                 df_api['categories_parsed'] = df_api['categories'].apply(parse_categories)
                 df_api['location_parsed'] = df_api['location'].apply(parse_dict)
+                if 'social_media' in df_api.columns:
+                    df_api['socialmedia_parsed'] = df_api['social_media'].apply(parse_dict)
+                    df_api['instagram'] = df_api['socialmedia_parsed'].apply(lambda x: x.get('instagram', np.nan) if isinstance(x, dict) and len(x) > 0 else None)
+                    df_api['twitter'] = df_api['socialmedia_parsed'].apply(lambda x: x.get('twitter', np.nan) if isinstance(x, dict) and len(x) > 0 else None)
+                    df_api['facebook_id'] = df_api['socialmedia_parsed'].apply(lambda x: x.get('facebook_id', np.nan) if isinstance(x, dict) and len(x) > 0 else None)
+                else:
+                    df_api['instagram'] = None
+                    df_api['twitter'] = None
+                    df_api['facebook_id'] = None
 
                 # Obtenemos los campos de los diccionarios de las columnas de categories y location:
-                df_api['category_id'] = df_api['categories_parsed'].apply(lambda x: x[0].get('id', np.nan) if isinstance(x, list) and len(x) > 0 else None)
+                df_api['category_id'] = df_api['categories_parsed'].apply(lambda x: x[0].get('fsq_category_id', np.nan) if isinstance(x, list) and len(x) > 0 else None)
                 df_api['category_name'] = df_api['categories_parsed'].apply(lambda x: x[0].get('name', np.nan) if isinstance(x, list) and len(x) > 0 else None)
                 df_api['category_short_name'] = df_api['categories_parsed'].apply(lambda x: x[0].get('short_name', np.nan) if isinstance(x, list) and len(x) > 0 else None)
                 df_api['category_plural_name'] = df_api['categories_parsed'].apply(lambda x: x[0].get('plural_name', np.nan) if isinstance(x, list) and len(x) > 0 else None)
@@ -532,24 +382,14 @@ with col_centrado:
 
                 df_api['address'] = df_api['location_parsed'].apply(lambda x: x.get('formatted_address', np.nan) if isinstance(x, dict) and len(x) > 0 else None)
                 df_api['country'] = df_api['location_parsed'].apply(lambda x: x.get('country', np.nan) if isinstance(x, dict) and len(x) > 0 else None)
-                if 'dma' in df_api.loc[0, 'location_parsed']:
-                    df_api['admin_region'] = df_api['location_parsed'].apply(lambda x: x.get('dma', np.nan) if isinstance(x, dict) and len(x) > 0 else None)
-                if 'admin_region' in df_api.loc[0, 'location_parsed']:
-                    df_api['admin_region'] = df_api['location_parsed'].apply(lambda x: x.get('admin_region', np.nan) if isinstance(x, dict) and len(x) > 0 else None)
                 df_api['locality'] = df_api['location_parsed'].apply(lambda x: x.get('locality', np.nan) if isinstance(x, dict) and len(x) > 0 else None)
                 df_api['postcode'] = df_api['location_parsed'].apply(lambda x: x.get('postcode', np.nan) if isinstance(x, dict) and len(x) > 0 else None)
                 df_api['region'] = df_api['location_parsed'].apply(lambda x: x.get('region', np.nan) if isinstance(x, dict) and len(x) > 0 else None)
-
+                
                 # Creamos las columnas que le faltan al dataset de la API para unificarlo más tarde con el de HugginGFace
-                df_api['date_created'] = None
-                df_api['date_refreshed'] = None
-                df_api['date_closed'] = None
-                df_api['tel'] = None
-                df_api['website'] = None
-                df_api['email'] = None
-                df_api['facebook_id'] = None
-                df_api['instagram'] = None
-                df_api['twitter'] = None
+                for campo in campos_finales:
+                    if campo not in df_api.columns:
+                        df_api[campo] = None
                 
                 df_api = df_api[campos_finales]
             
@@ -558,6 +398,7 @@ with col_centrado:
             # Convertimos a JSON
             data = json.loads(df_api.to_json(orient="records", force_ascii=False))
             st.session_state['data'] = data  # Guarda datos crudos
+            st.session_state['dataframe'] = df_api  # Guardamos el dataframe en sesión
 
             # Si mediante la llamada a la API se han encontrado menos POIs de los solicitados 
             # verificamos si en el dataset de Foursquare hay más
@@ -565,6 +406,9 @@ with col_centrado:
                 len_df = st.session_state.get('len_HF_dataset', None)
                 st.write(f"Vamos a intentar completar los POIs obtenidos llamando a la API con los {len_df} POIs del dataset de Foursquare")
                 # Filstrar los POIs del dataset
+                if "hf_logged_in" not in st.session_state:
+                    login(token=hf_token)
+                    st.session_state["hf_logged_in"] = True
                 dataset_path = "hf://datasets/foursquare/fsq-os-places/release/dt=2025-08-07/places/parquet/*.parquet"
 
                 df_dataset = filtrar_pois_fast(dataset_path, location=(center_lat, center_lon, radius_km), query=query)
@@ -574,8 +418,8 @@ with col_centrado:
                 # Traemos solo 'limit' filas desde dask (rápido)
                 df_dataset_pd = df_dataset.head(limit)
 
-                # Renombramos columnas para unificar
-                df_dataset_pd = df_dataset_pd.rename(columns={'fsq_place_id': 'fsq_id'})
+                # Elimina filas con latitud o longitud vacías
+                df_dataset_pd = df_dataset_pd.dropna(subset=['latitude', 'longitude'])
 
                 # Nos quedamos con el primer id de las categorias de los pois
                 df_dataset_pd["category_id"] = df_dataset_pd["fsq_category_ids"].apply(lambda x: x[0] if x is not None and len(x) > 0 else None)
@@ -596,14 +440,16 @@ with col_centrado:
                     how='left'
                 )
 
-                df_dataset_pd['closed_bucket'] = np.nan
                 df_dataset_pd = df_dataset_pd[campos_finales]
 
                 # Concatenamos
                 df_combined = pd.concat([df_api, df_dataset_pd], ignore_index=True)
 
-                # Quitamos duplicados por fsq_id
-                df_combined = df_combined.drop_duplicates(subset='fsq_id')
+                # Quitamos duplicados por fsq_place_id
+                df_combined = df_combined.drop_duplicates(subset='fsq_place_id')
+
+                # Elimina filas con latitud o longitud vacías
+                df_combined = df_combined.dropna(subset=['latitude', 'longitude'])
 
                 # Nos aseguramos que los POIs finales están en la zona deseada
                 st.write(f"Vamos a filtrar los {len(df_combined)} POIs obtenidos para asegurarnos que cumplen las peticiones.")
@@ -663,7 +509,7 @@ if data:
     st.subheader(f"Mostrando los primeros {limite_fotos} POIs encontrados:")
     for poi in data[:limite_fotos]:
         name = poi.get("name", "Sin nombre")
-        fsq_id = poi.get("fsq_id")
+        fsq_place_id = poi.get("fsq_place_id")
 
         coords = {'latitude': poi.get('latitude', None), 'longitude': poi.get('longitude', None)}
         category_name = poi.get("category_name", "Sin categoría")
@@ -675,7 +521,7 @@ if data:
             icon_url = None
         
         # Obtener imagen real
-        photo_url = get_poi_photo(fsq_id)
+        photo_url = get_poi_photo(fsq_place_id)
 
         # Mostrar info del POI
         cols = st.columns([1, 9])
@@ -762,14 +608,14 @@ if st.session_state['analytics']:
     rows = []
     for poi in data:
         name = poi.get("name", "Sin nombre")
-        fsq_id = poi.get("fsq_id", "")
+        fsq_place_id = poi.get("fsq_place_id", "")
         lat = poi.get("latitude", None)
         lon = poi.get("longitude", None)
         
         cat_name = poi.get("category_name", "Sin categoría")
         category_counts[cat_name] = category_counts.get(cat_name, 0) + 1
         rows.append({
-            "fsq_id": fsq_id,
+            "fsq_place_id": fsq_place_id,
             "name": name,
             "category": cat_name,
             "latitude": lat,
@@ -900,11 +746,3 @@ if data:
                 data=zip_bytes,
                 file_name="foursquare_data_shapefile.zip",
                 mime="application/zip")
-
-
-
-
-
-
-
-
