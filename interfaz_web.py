@@ -413,7 +413,8 @@ with col_centrado:
                 st.success(f"Se han encontrado {len(df_dataset)} POIs adicionales en el dataset de Foursquare.")
 
                 # Traemos solo 'limit' filas desde dask (rápido)
-                df_dataset_pd = df_dataset.head(limit)
+                # df_dataset_pd = df_dataset.head(limit)
+                df_dataset_pd = df_dataset.compute()
 
                 # Elimina filas con latitud o longitud vacías
                 df_dataset_pd = df_dataset_pd.dropna(subset=['latitude', 'longitude'])
@@ -743,4 +744,5 @@ if data:
                 data=zip_bytes,
                 file_name="foursquare_data_shapefile.zip",
                 mime="application/zip")
+
 
