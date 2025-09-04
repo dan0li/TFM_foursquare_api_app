@@ -405,10 +405,7 @@ with col_centrado:
             if len(data) < limit or not data:
                 len_df = st.session_state.get('len_HF_dataset', None)
                 st.write(f"Vamos a intentar completar los POIs obtenidos llamando a la API con los {len_df} POIs del dataset de Foursquare")
-                # Filstrar los POIs del dataset
-                if "hf_logged_in" not in st.session_state:
-                    login(token=hf_token)
-                    st.session_state["hf_logged_in"] = True
+                # Filtrar los POIs del dataset
                 dataset_path = "hf://datasets/foursquare/fsq-os-places/release/dt=2025-08-07/places/parquet/*.parquet"
 
                 df_dataset = filtrar_pois_fast(dataset_path, location=(center_lat, center_lon, radius_km), query=query)
@@ -746,3 +743,4 @@ if data:
                 data=zip_bytes,
                 file_name="foursquare_data_shapefile.zip",
                 mime="application/zip")
+
