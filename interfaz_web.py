@@ -71,6 +71,7 @@ if location:
     if loc:
         lat, lon = loc.latitude, loc.longitude
         parametros['ll'] = f"{str(lat)},{str(lon)}"
+        parametros['radius'] = 22000 # valor por defecto
     else:
         st.error("No se pudo encontrar la ciudad.")
 
@@ -756,6 +757,7 @@ if data:
                 data=zip_bytes,
                 file_name="foursquare_data_shapefile.zip",
                 mime="application/zip")
+
 
 
 
