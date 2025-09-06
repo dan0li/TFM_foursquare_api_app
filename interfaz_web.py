@@ -19,6 +19,7 @@ import math
 import ast
 import re
 import dask.dataframe as dd
+from requests.exceptions import ChunkedEncodingError, RequestException
 
 # Configuramos las API KEYS necesarias
 API_KEY = st.secrets["NUEVA_API_KEY_FOURSQUARE"]
@@ -152,14 +153,20 @@ def get_poi_photo(fsq_place_id):
         "Authorization": API_KEY,
         "Accept": "application/json"
     }
-    response = requests.get(url, headers=headers)
-    if response.status_code == 200:
+    try:
+        response = requests.get(url, headers=headers, timeout=10)  # timeout evita bloqueos
+        response.raise_for_status()  # lanza excepción si no es 200
         photos = response.json()
         if photos:
-            # Tomamos la primera foto disponible
             p = photos[0]
             return f"{p['prefix']}original{p['suffix']}"
-    return None  # Si no hay fotos o error
+    except ChunkedEncodingError:
+        # fallo típico de conexión cortada
+        return None
+    except RequestException as e:
+        # cualquier otro error de requests
+        return None
+    return None
 
 def get_poi_tips(fsq_place_id):
     url = f"https://api.foursquare.com/v3/places/{fsq_place_id}/tips"
@@ -749,6 +756,7 @@ if data:
                 data=zip_bytes,
                 file_name="foursquare_data_shapefile.zip",
                 mime="application/zip")
+
 
 
 
