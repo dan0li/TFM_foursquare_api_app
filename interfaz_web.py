@@ -214,6 +214,8 @@ def buscar_pois_malla(api_key, centro, radio_m, step_m=250, query=None):
                 all_pois[poi["fsq_place_id"]] = poi
                 if len(all_pois) >= limit:
                     break  # Salir del for interno si alcanzamos el límite
+        elif response.status_code == 429: # límite de tasa alcanzado
+            return list(all_pois.values())[:limit]
 
     return list(all_pois.values())[:limit]
 
@@ -744,5 +746,6 @@ if data:
                 data=zip_bytes,
                 file_name="foursquare_data_shapefile.zip",
                 mime="application/zip")
+
 
 
